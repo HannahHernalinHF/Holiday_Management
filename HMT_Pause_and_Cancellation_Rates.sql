@@ -130,7 +130,7 @@ ORDER BY 1
     CROSS JOIN (
         SELECT fk_imported_at_date
         FROM scm_forecasting_model.subscription_forecast_snapshots
-        WHERE fk_imported_at_date BETWEEN 20241122 AND 20241231 ---< Update date period
+        WHERE fk_imported_at_date BETWEEN 20240726 AND 20240831 ---< Update date period
         GROUP BY 1) AS B
     ORDER BY 1,2
 )
@@ -138,17 +138,17 @@ ORDER BY 1
 -- Third, pull info for the week the PH falls on, moving WOW
 , VIEW_3B AS (
     SELECT A.*
-        , (CASE WHEN DATEDIFF(TO_DATE(CAST(A.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-11-22') BETWEEN 0 AND 6 THEN status_wk_4 ---< Update start date
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-11-22') BETWEEN 7 AND 13 THEN status_wk_3 ---< Update start date
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-11-22') BETWEEN 14 AND 20 THEN status_wk_2 ---< Update start date
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-11-22') BETWEEN 21 AND 27 THEN status_wk_1 ---< Update start date
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-11-22') BETWEEN 28 AND 34 THEN status_wk_0 ---< Update start date
+        , (CASE WHEN DATEDIFF(TO_DATE(CAST(A.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-07-26') BETWEEN 0 AND 6 THEN status_wk_4
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-07-26') BETWEEN 7 AND 13 THEN status_wk_3
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-07-26') BETWEEN 14 AND 20 THEN status_wk_2
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-07-26') BETWEEN 21 AND 27 THEN status_wk_1
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2024-07-26') BETWEEN 28 AND 34 THEN status_wk_0
             ELSE 'Other' END) AS status
     FROM VIEW_3A AS A
     LEFT JOIN scm_forecasting_model.subscription_forecast_snapshots AS B
     ON A.fk_subscription=B.fk_subscription
     AND A.fk_imported_at_date=B.fk_imported_at_date
-    WHERE B.country='GB' ---< Update country
+    WHERE B.country='GB'
 )
 
 
