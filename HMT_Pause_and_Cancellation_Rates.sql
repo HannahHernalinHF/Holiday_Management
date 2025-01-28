@@ -34,7 +34,6 @@ FROM (
     FROM scm_forecasting_model.subscription_forecast_snapshots
     WHERE fk_imported_at_date BETWEEN 20240726 AND 20240822 ---< Update date 
     AND country='GB' ---< Update country
-    --AND delivery_wk_4 BETWEEN '2024-04-26' AND '2024-05-27'-- IS NOT NULL // Removed as it cuts most of the delivery week
     AND delivery_wk_4 BETWEEN '2024-08-25' AND '2024-08-31' ---< Update delivery date period
     GROUP BY 1,2,3,4,5)
 WHERE rank=1
@@ -53,9 +52,9 @@ ORDER BY 1
 -- Grab the target date from the HMT shift
 , VIEW_2B AS (
     SELECT a.*
-        , origin_option_handle--COALESCE(origin_option_handle,delivery_time) AS origin_option_handle
-        , target_option_handle--COALESCE(target_option_handle,delivery_time) AS target_option_handle
-        , b.target_date--COALESCE(b.target_date,delivery_wk_4) AS target_date
+        , origin_option_handle
+        , target_option_handle
+        , b.target_date
         , delivery_wk_4
         , c.hellofresh_week
     FROM VIEW_2A AS a
@@ -66,9 +65,7 @@ ORDER BY 1
         ON COALESCE(B.target_date,delivery_wk_4) = c.date_string_backwards
 )
 
---SELECT delivery_wk_4, target_date, cOUNT(DISTINCT fk_subscription) FROM VIEW_2B GROUP BY 1,2 ORDER BY 1,2  /*
-
--- To incorporate 1 off changes
+-- To incorporate 1 off changes (VIEW_6 to VIEW_7)
 , VIEW_6 AS (
 SELECT id_subscription_change_schedule AS change_sub_id
      , fk_subscription AS subscription_id
@@ -86,22 +83,20 @@ WHERE business_unit = 'GB' ---< Update country
 
 , VIEW_7 AS (
 SELECT DISTINCT a.fk_subscription,
-                COALESCE(DATE_ADD(CAST(delivery_wk_4 AS DATE), CAST(SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS INT)),a.delivery_wk_4) AS delivery_wk_4,
+                a.delivery_wk_4,
                 a.fk_imported_at_date,
-                --a.created_at,
-                a.delivery_time,
                 a.zip_clean,
                 a.origin_option_handle,
                 a.target_option_handle,
-                a.target_date,
+                COALESCE(DATE_ADD(CAST(delivery_wk_4 AS DATE), CAST(SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS INT)),a.target_date) AS target_date,
                 COALESCE(b.changed_delivery_time,a.delivery_time) AS updated_delivery_time,
-                SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS day_difference,
-                DATE_ADD(CAST(delivery_wk_4 AS DATE), CAST(SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS INT)) AS updated_delivery_date
+                DATEDIFF(COALESCE(DATE_ADD(CAST(delivery_wk_4 AS DATE), CAST(SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS INT)),a.target_date),
+                         COALESCE(DATE_ADD(CAST(delivery_wk_4 AS DATE), CAST(SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS INT)),a.delivery_wk_4)) AS day_difference,
+                COALESCE(DATE_ADD(CAST(delivery_wk_4 AS DATE), CAST(SUBSTRING(b.changed_delivery_time,4,1) - SUBSTRING(a.delivery_time,4,1) AS INT)),a.delivery_wk_4) AS updated_delivery_date
 FROM VIEW_2B AS a
 LEFT JOIN VIEW_6 AS b
     ON a.fk_subscription = b.subscription_id
     AND a.hellofresh_week = b.hellofresh_week
---WHERE changed_delivery_time IS NOT NULL AND delivery_time!=changed_delivery_time
 ORDER BY 1
 )
 
@@ -110,22 +105,20 @@ ORDER BY 1
 , VIEW_2C AS (
     SELECT fk_subscription
         , zip_clean
-        , delivery_wk_4 AS original_delivery_date
+        , updated_delivery_date AS original_delivery_date
         , target_date AS new_delivery_date
-        , (CASE WHEN delivery_wk_4=target_date THEN 'Cohort A (0)' --- non-shifted: delivery date is on the public holiday
-                WHEN DATEDIFF(target_date, delivery_wk_4)=-1 THEN 'Cohort B (-1)'  --- shifted: delivery date is shifted to 1 day earlier than the public holiday
-                WHEN DATEDIFF(target_date, delivery_wk_4)=1 THEN 'Cohort C (+1)' --- shifted: delivery date is shifted to 1 day later than the public holiday
-                WHEN DATEDIFF(target_date, delivery_wk_4)=-2 THEN 'Cohort D (-2)' --- shifted: delivery date is shifted to 2 days earlier than the public holiday
-                WHEN DATEDIFF(target_date, delivery_wk_4)=2 THEN 'Cohort E (+2)' --- shifted: delivery date is shifted to 2 days later than the public holiday
-                WHEN DATEDIFF(target_date, delivery_wk_4)=-3 THEN 'Cohort F (-3)' --- shifted: delivery date is shifted to 3 days earlier than the public holiday)
-                WHEN DATEDIFF(target_date, delivery_wk_4)=3 THEN 'Cohort G (+3)' --- shifted: delivery date is shifted to 3 days later than the public holiday)
+        , (CASE WHEN updated_delivery_date=target_date THEN 'Cohort A (0)' --- non-shifted: delivery date is on the public holiday
+                WHEN DATEDIFF(target_date, updated_delivery_date)=-1 THEN 'Cohort B (-1)'  --- shifted: delivery date is shifted to 1 day earlier than the public holiday
+                WHEN DATEDIFF(target_date, updated_delivery_date)=1 THEN 'Cohort C (+1)' --- shifted: delivery date is shifted to 1 day later than the public holiday
+                WHEN DATEDIFF(target_date, updated_delivery_date)=-2 THEN 'Cohort D (-2)' --- shifted: delivery date is shifted to 2 days earlier than the public holiday
+                WHEN DATEDIFF(target_date, updated_delivery_date)=2 THEN 'Cohort E (+2)' --- shifted: delivery date is shifted to 2 days later than the public holiday
+                WHEN DATEDIFF(target_date, updated_delivery_date)=-3 THEN 'Cohort F (-3)' --- shifted: delivery date is shifted to 3 days earlier than the public holiday)
+                WHEN DATEDIFF(target_date, updated_delivery_date)=3 THEN 'Cohort G (+3)' --- shifted: delivery date is shifted to 3 days later than the public holiday)
             END) AS cohort
     FROM VIEW_7--VIEW_2B --
-    WHERE delivery_wk_4='2024-08-26' ---< Update PH delivery date 
+    WHERE updated_delivery_date='2024-08-26' -- only focus on PH day for now
 )
 
-
---SELECT cohort,count(distinct fk_subscription) FROM VIEW_2C GROUP BY 1 ORDER BY 1 /*
 
 -- Grab the status for these customers from the first date we used (in VIEW_2A CTE)
 -- First set up the unique list of customers
