@@ -3,7 +3,7 @@
 -- To gather the postal codes that have delivery shifts
 WITH VIEW_1_HolidayShift AS (
 SELECT DISTINCT ed.country_group AS market,
-    ed.country,
+    ed.bob_entity_code AS country,
     business_unit,
     shift_id,
     postal_code,
@@ -22,10 +22,10 @@ LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensio
     ON hs.business_unit = ed.bob_entity_code
 WHERE meta.operation != 'd'
   AND year>=2024
-  AND business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+  AND hs.business_unit IN ('BE','NL','LU','DE','GB','FR')-- ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
 )
 
-
+    
 -- To gather the 1-off delivery changes data
 , VIEW_2_1OFF AS (
 SELECT scs.business_unit
@@ -41,7 +41,7 @@ FROM dl_bob_live_non_pii.subscription_change_schedule AS scs
 LEFT JOIN dimensions.date_dimension AS dd
     ON scs.week_id = dd.hellofresh_week
     AND scs.delivery_weekday = (dd.day_of_week + 1)  -- In date dimensions table, Monday is 0. In SCS table, Monday is 1, so we have do to +1
-WHERE scs.business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+WHERE scs.business_unit IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
   AND scs.week_id >= '2024-W01'
   AND scs.delivery_time IS NOT NULL
 )
@@ -51,7 +51,7 @@ WHERE scs.business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','G
 , VIEW_3_SubscriptionsWith1Off AS (
     SELECT DISTINCT
           ed.country_group AS market
-        , ed.country AS country
+        , ed.bob_entity_code AS country
         , ds.fk_subscription
         , ds.delivery_wk_4 AS delivery_date
         , ds.fk_imported_at_date
@@ -78,7 +78,7 @@ WHERE scs.business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','G
         AND ds.fk_subscription = off.subscription_id
         AND dd.hellofresh_week = off.hellofresh_week
     WHERE ds.fk_imported_at_date>=20240101 AND ds.delivery_wk_4>='2021-01-01'
-      AND ds.country IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+      AND ds.country IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
       AND ds.delivery_wk_4 IS NOT NULL
 )
 
@@ -86,7 +86,7 @@ WHERE scs.business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','G
 --- To get the other relevant delivery options data
 , VIEW_3_DeliveryOptions AS (
 SELECT b.country_group AS market
-    , b.country
+    , b.bob_entity_code AS country
     , option_handle
     , cutoff
     , surcharge_price
@@ -98,14 +98,14 @@ FROM logistics_configurator.delivery_option AS a
 LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS b
     ON a.region_code = b.bob_entity_code
 WHERE fk_imported_at>=20240101
-  AND region_code IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+  AND region_code IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
 ORDER BY 2,8
 )
 
 
 --- To get the postal codes shifts data, add the non-shifted and shifted delivery attributes/options, and add the subscriptions data which is for the comparison of impacted vs non-impacted customers
 , VIEW_4_Final AS (
-SELECT hs.market
+SELECT DISTINCT hs.market
      , hs.country
      , hs.shift_id
      , hs.postal_code
