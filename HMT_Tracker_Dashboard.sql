@@ -25,7 +25,7 @@ WHERE meta.operation != 'd'
   AND hs.business_unit IN ('BE','NL','LU','DE','GB','FR')-- ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
 )
 
-    
+
 -- To gather the 1-off delivery changes data
 , VIEW_2_1OFF AS (
 SELECT scs.business_unit
@@ -85,8 +85,8 @@ WHERE scs.business_unit IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU'
 
 --- To get the other relevant delivery options data
 , VIEW_3_DeliveryOptions AS (
-SELECT b.country_group AS market
-    , b.bob_entity_code AS country
+SELECT dd.country_group AS market
+    , dd.bob_entity_code AS country
     , option_handle
     , cutoff
     , surcharge_price
@@ -94,9 +94,9 @@ SELECT b.country_group AS market
     , delivery_day
     , production_capacity
     , fk_imported_at
-FROM logistics_configurator.delivery_option AS a
-LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS b
-    ON a.region_code = b.bob_entity_code
+FROM logistics_configurator.delivery_option AS do
+LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS dd
+    ON do.region_code = dd.bob_entity_code
 WHERE fk_imported_at>=20240101
   AND region_code IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
 ORDER BY 2,8
