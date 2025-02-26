@@ -12,18 +12,17 @@ SELECT DISTINCT ed.country_group AS market,
     origin_date,
     target_date,
     visible_to_customer,
-    REPLACE(SUBSTR(published_time, 1, 10), '-', '') AS published_date,
-    year,
-    month,
-    day,
-    SUBSTRING(fk_imported_at, 1, 8) AS fk_imported_at
+    SUBSTRING(fk_imported_at, 1, 8) AS fk_imported_at,
+    MIN(REPLACE(SUBSTR(published_time, 1, 10), '-', '')) AS published_date
 FROM public_holiday_shift_live.holiday_shift_standardized_ap AS hs
 LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS ed
     ON hs.business_unit = ed.bob_entity_code
 WHERE meta.operation != 'd'
   AND year>=2024
-  AND hs.business_unit IN ('BE','NL','LU','DE','GB','FR')-- ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+  AND hs.business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+GROUP BY ALL
 )
+
 
 
 -- To gather the 1-off delivery changes data
@@ -34,14 +33,12 @@ SELECT scs.business_unit
      , dd.day_name
      , scs.delivery_time AS changed_delivery_time
      , scs.week_id AS hellofresh_week
-     --, scs.status
      , dd.date_string_backwards AS changed_delivery_date
-     --, REPLACE(SUBSTR(scs.created_at, 1, 10), '-', '') AS created_at --created_at
 FROM dl_bob_live_non_pii.subscription_change_schedule AS scs
 LEFT JOIN dimensions.date_dimension AS dd
     ON scs.week_id = dd.hellofresh_week
     AND scs.delivery_weekday = (dd.day_of_week + 1)  -- In date dimensions table, Monday is 0. In SCS table, Monday is 1, so we have do to +1
-WHERE scs.business_unit IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+WHERE scs.business_unit IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
   AND scs.week_id >= '2024-W01'
   AND scs.delivery_time IS NOT NULL
 )
@@ -77,14 +74,14 @@ WHERE scs.business_unit IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU'
         ON ds.country = off.business_unit
         AND ds.fk_subscription = off.subscription_id
         AND dd.hellofresh_week = off.hellofresh_week
-    WHERE ds.fk_imported_at_date>=20240101 AND ds.delivery_wk_4>='2021-01-01'
-      AND ds.country IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+    WHERE ds.fk_imported_at_date BETWEEN 20240101 AND 20241231 AND ds.delivery_wk_4>='2021-01-01'
+      AND ds.country IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
       AND ds.delivery_wk_4 IS NOT NULL
 )
 
 
 --- To get the other relevant delivery options data
-, VIEW_3_DeliveryOptions AS (
+, VIEW_4_DeliveryOptions AS (
 SELECT dd.country_group AS market
     , dd.bob_entity_code AS country
     , option_handle
@@ -98,41 +95,41 @@ FROM logistics_configurator.delivery_option AS do
 LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS dd
     ON do.region_code = dd.bob_entity_code
 WHERE fk_imported_at>=20240101
-  AND region_code IN ('BE','NL','LU','DE','GB','FR')--('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
+  AND region_code IN ('AU','BE','NL','LU','AT','CH','DE','DK','NO','SE','GB','ES','FR','IE','IT','NZ')
 ORDER BY 2,8
 )
 
 
+
 --- To get the postal codes shifts data, add the non-shifted and shifted delivery attributes/options, and add the subscriptions data which is for the comparison of impacted vs non-impacted customers
-, VIEW_4_Final AS (
+, VIEW_5_Final AS (
 SELECT DISTINCT hs.market
      , hs.country
      , hs.shift_id
      , hs.postal_code
      , hs.visible_to_customer
      , hs.published_date
-     , hs.year
-     , hs.month
-     , hs.day
-     , hs.fk_imported_at
-     , do1.packing_day AS origin_packing_day
-     , do1.cutoff AS origin_cutoff
+     , LEFT(do1.packing_day,3) AS origin_packing_day
+     , do1.cutoff AS origin_cutoff_value
+     , LEFT(UPPER(DATE_FORMAT(DATE_SUB(COALESCE(soff.updated_delivery_date,hs.origin_date) , INT(do1.cutoff)),'EEEE')),3) AS origin_cutoff_name
      , do1.surcharge_price AS origin_surcharge_price
-     , do2.packing_day AS target_packing_day
-     , do2.cutoff AS target_cutoff
+     , LEFT(do2.packing_day,3) AS target_packing_day
+     , do2.cutoff AS target_cutoff_value
+     , LEFT(UPPER(DATE_FORMAT(DATE_SUB(COALESCE(soff.updated_delivery_date,hs.origin_date), INT(do2.cutoff)),'EEEE')),3) AS target_cutoff_name
      , do2.surcharge_price AS target_surcharge_price
      , COALESCE(soff.updated_delivery_time,hs.origin_option_handle) AS updated_origin_time_handle
      , hs.target_option_handle
      , COALESCE(soff.updated_delivery_date,hs.origin_date) AS updated_origin_date
-     , hs.target_date
+     , COALESCE(hs.target_date,COALESCE(soff.updated_delivery_date,hs.origin_date)) AS updated_target_date
      , dd.hellofresh_week
-     , DATEDIFF(hs.target_date,COALESCE(soff.updated_delivery_date,hs.origin_date)) AS day_difference
+     , DATEDIFF(hs.target_date,soff.updated_delivery_date) AS day_difference
+     , CASE WHEN COALESCE(soff.updated_delivery_date,hs.origin_date) != COALESCE(hs.target_date,COALESCE(soff.updated_delivery_date,hs.origin_date)) THEN "Impacted" ELSE "Non-Impacted" END AS impact
      , COUNT(DISTINCT soff.fk_subscription) AS subscription_count
 FROM VIEW_1_HolidayShift AS hs
-LEFT JOIN VIEW_3_DeliveryOptions AS do1
+LEFT JOIN VIEW_4_DeliveryOptions AS do1
     ON hs.country = do1.country
     AND hs.origin_option_handle = do1.option_handle
-LEFT JOIN VIEW_3_DeliveryOptions AS do2
+LEFT JOIN VIEW_4_DeliveryOptions AS do2
     ON hs.country = do2.country
     AND hs.target_option_handle = do2.option_handle
 LEFT JOIN VIEW_3_SubscriptionsWith1Off AS soff
@@ -140,12 +137,12 @@ LEFT JOIN VIEW_3_SubscriptionsWith1Off AS soff
     AND hs.postal_code = soff.zip
     AND hs.origin_option_handle = soff.updated_delivery_time
     AND hs.origin_date = soff.updated_delivery_date
-LEFT JOIN dimensions.date_dimension AS dd --- to add the hellofresh_week field
-        ON soff.updated_delivery_date = dd.date_string_backwards
-WHERE LENGTH(soff.zip)>2
+LEFT JOIN dimensions.date_dimension AS dd --- To add the hellofresh_week field
+    ON COALESCE(soff.updated_delivery_date,hs.origin_date) = dd.date_string_backwards
+WHERE dd.hellofresh_week BETWEEN '2024-W10' AND '2025-W12' --- To temporarily filter the relevant dates and reduce the data input volume (this will be removed once the Tardis table is completed).
 GROUP BY ALL
 )
 
 
 SELECT *
-FROM VIEW_4_Final
+FROM VIEW_5_Final
