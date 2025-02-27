@@ -122,7 +122,7 @@ SELECT DISTINCT hs.market
      , COALESCE(soff.updated_delivery_date,hs.origin_date) AS updated_origin_date
      , COALESCE(hs.target_date,COALESCE(soff.updated_delivery_date,hs.origin_date)) AS updated_target_date
      , dd.hellofresh_week
-     , DATEDIFF(hs.target_date,soff.updated_delivery_date) AS day_difference
+     , DATEDIFF(COALESCE(hs.target_date,COALESCE(soff.updated_delivery_date,hs.origin_date)),COALESCE(soff.updated_delivery_date,hs.origin_date)) AS day_difference
      , CASE WHEN COALESCE(soff.updated_delivery_date,hs.origin_date) != COALESCE(hs.target_date,COALESCE(soff.updated_delivery_date,hs.origin_date)) THEN "Impacted" ELSE "Non-Impacted" END AS impact
      , COUNT(DISTINCT soff.fk_subscription) AS subscription_count
 FROM VIEW_1_HolidayShift AS hs
