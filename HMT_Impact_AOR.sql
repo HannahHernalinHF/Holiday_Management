@@ -156,7 +156,7 @@ SELECT DISTINCT subscription_id
   , customer_uuid
   , create_date
   , ROW_NUMBER() OVER(PARTITION BY subscription_id ORDER BY create_date DESC) AS rank
-FROM global_bi_business.order_line_items
+FROM public_edw_business_mart_live.order_line_items
 WHERE bob_entity_code='DE'
   AND hellofresh_delivery_week>='2025-W10' AND hellofresh_delivery_week<='2025-W26'
 ORDER BY 1,2,4
@@ -182,7 +182,7 @@ SELECT DISTINCT
 FROM VIEW_3A AS a
 LEFT JOIN VIEW_5B AS b
     ON a.fk_subscription = b.subscription_id
-LEFT JOIN global_bi_business.order_line_items AS c
+LEFT JOIN public_edw_business_mart_live.order_line_items AS c
     ON a.fk_subscription = c.subscription_id
 WHERE c.bob_entity_code='DE'
   AND c.hellofresh_delivery_week>='2025-W10' AND c.hellofresh_delivery_week<='2025-W20'
