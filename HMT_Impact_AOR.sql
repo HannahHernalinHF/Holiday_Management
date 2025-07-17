@@ -93,11 +93,11 @@ SELECT fk_subscription
      , delivery_wk_4 AS original_delivery_date
      , target_date AS new_delivery_date
      , (CASE WHEN delivery_wk_4=target_date THEN 'Cohort A (0)' --- non-shifted: delivery date is on the public holiday
-             WHEN RIGHT(target_date,2)-RIGHT(delivery_wk_4,2)= -1 THEN 'Cohort B (-1)'  --- shifted: delivery date is shifted to 1 day earlier than the public holiday
-             WHEN RIGHT(target_date,2)-RIGHT(delivery_wk_4,2)= 1 THEN 'Cohort C (+1)' --- shifted: delivery date is shifted to 1 day later than the public holiday
-             WHEN RIGHT(target_date,2)-RIGHT(delivery_wk_4,2)= -2 THEN 'Cohort D (-2)' --- shifted: delivery date is shifted to 2 days earlier than the public holiday
-             WHEN RIGHT(target_date,2)-RIGHT(delivery_wk_4,2)= 2 THEN 'Cohort E (+2)' --- shifted: delivery date is shifted to 2 days later than the public holiday
-             WHEN RIGHT(target_date,2)-RIGHT(delivery_wk_4,2)= 3 THEN 'Cohort F (+3)' --- shifted: delivery date is shifted to 3 days later than the public holiday
+             WHEN DATEDIFF(target_date,delivery_wk_4) = -1 THEN 'Cohort B (-1)'  --- shifted: delivery date is shifted to 1 day earlier than the public holiday
+             WHEN DATEDIFF(target_date,delivery_wk_4) = 1 THEN 'Cohort C (+1)' --- shifted: delivery date is shifted to 1 day later than the public holiday
+             WHEN DATEDIFF(target_date,delivery_wk_4) = -2 THEN 'Cohort D (-2)' --- shifted: delivery date is shifted to 2 days earlier than the public holiday
+             WHEN DATEDIFF(target_date,delivery_wk_4) = 2 THEN 'Cohort E (+2)' --- shifted: delivery date is shifted to 2 days later than the public holiday
+             WHEN DATEDIFF(target_date,delivery_wk_4) = 3 THEN 'Cohort F (+3)' --- shifted: delivery date is shifted to 3 days later than the public holiday
          END) AS cohort
 FROM VIEW_2B
 WHERE delivery_wk_4='2025-03-08' -- only focus on PH day for now
