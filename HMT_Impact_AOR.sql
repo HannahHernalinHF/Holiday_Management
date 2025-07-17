@@ -1,4 +1,6 @@
---- IMPORTANT NOTE: Due to changes with the source for the subscriptions data, we can only run this script for holidays where it doesn't include the dates from 01 APR 2025 to 6 JUL 2025
+--- Customer Impact Analysis: Delivery Changes Due to Public Holidays (AOR + 1 OFF Changes Incorporated)
+
+--- IMPORTANT NOTE: Due to changes with the source (delivery_snapshots table) for the subscriptions data, we can only run this script for holidays where it doesn't include the dates from 01 APR 2025 to 6 JUL 2025
 
 -- Get the postal codes for a specific public holiday
 WITH VIEW_1_Holiday_Shifts AS (
@@ -50,7 +52,7 @@ FROM (
              WHEN ed.bob_entity_code IN ('NL') AND sfs.zip='NL5042ZK' THEN '5042'
             ELSE UPPER(sfs.zip) END AS zip_clean
         , ROW_NUMBER() OVER(PARTITION BY sfs.fk_subscription ORDER BY sfs.fk_imported_at_date) AS rank
-    FROM scm_forecasting_model.subscription_forecast_snapshots AS sfs --scm_forecasting_model.delivery_snapshots AS sfs
+    FROM scm_forecasting_model.delivery_snapshots AS sfs
     LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS ed
         ON sfs.country = ed.bob_entity_code
     LEFT JOIN (SELECT DISTINCT hellofresh_week, date_string_backwards FROM dimensions.date_dimension) AS dd
@@ -67,10 +69,10 @@ WHERE rank=1
 )
 
 
-/* 
+/*
 --To identify the dates (sfs.fk_imported_at_date, sfs.delivery_wk_4) for the above
 SELECT DISTINCT fk_imported_at_date
-FROM scm_forecasting_model.subscription_forecast_snapshots
+FROM scm_forecasting_model.delivery_snapshots
 WHERE country='BE' AND
   delivery_wk_4 = '2025-03-31'
   --fk_imported_at_date BETWEEN 20250228 AND 20250306
@@ -124,8 +126,8 @@ WHERE delivery_wk_4='2025-03-31' -- only focus on PH day for now
 )
 
 
--- Third, pull info for the week the PH falls on, moving WOW 
--- Update the dates with the first date stated in sfs.fk_imported_at_date from the VIEW_3_Subscriptions CTE 
+-- Third, pull info for the week the PH falls on, moving WOW
+-- Update the dates with the first date stated in sfs.fk_imported_at_date from the VIEW_3_Subscriptions CTE
 , VIEW_3B AS (
     SELECT A.*
         , (CASE
