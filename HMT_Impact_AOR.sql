@@ -1,4 +1,4 @@
---- Customer Impact Analysis: Delivery Changes Due to Public Holidays (AOR + 1 OFF Changes Incorporated)
+--- IMPORTANT NOTE: Due to changes with the source for the subscriptions data, we can only run this script for holidays where it doesn't include the dates from 01 APR 2025 to 6 JUL 2025
 
 -- Get the postal codes for a specific public holiday
 WITH VIEW_1_Holiday_Shifts AS (
@@ -10,8 +10,8 @@ SELECT DISTINCT business_unit
               , postal_code
               , REPLACE(SUBSTR(published_time, 1, 10), '-', '') AS published_date
 FROM public_holiday_shift_live.holiday_shift_latest
-WHERE business_unit IN ('DE')   --- Update preferred BU
-    AND origin_date='2025-03-08' --- Update preferred Public Holiday
+WHERE business_unit IN ('BE')   --- Update preferred BU
+    AND origin_date='2025-03-31' --- Update preferred Public Holiday
 )
 
 
@@ -28,13 +28,13 @@ FROM dl_bob_live_non_pii.subscription_change_schedule AS scs
 LEFT JOIN dimensions.date_dimension AS dd
     ON scs.week_id = dd.hellofresh_week
     AND scs.delivery_weekday = (dd.day_of_week + 1)
-WHERE scs.business_unit = 'DE'
+WHERE scs.business_unit = 'BE'
   AND scs.week_id >= '2024-W10'
   AND scs.delivery_time IS NOT NULL
 )
 
 
--- Get our base customers/subscriptions that have the public holiday delivery
+-- Get our base customers/subscriptions that have the public holiday delivery with 1-off changes incorporated
 , VIEW_3_Subscriptions AS (
 SELECT *
 FROM (
@@ -50,7 +50,7 @@ FROM (
              WHEN ed.bob_entity_code IN ('NL') AND sfs.zip='NL5042ZK' THEN '5042'
             ELSE UPPER(sfs.zip) END AS zip_clean
         , ROW_NUMBER() OVER(PARTITION BY sfs.fk_subscription ORDER BY sfs.fk_imported_at_date) AS rank
-    FROM scm_forecasting_model.subscription_forecast_snapshots AS sfs -- scm_forecasting_model.delivery_snapshots AS sfs
+    FROM scm_forecasting_model.subscription_forecast_snapshots AS sfs --scm_forecasting_model.delivery_snapshots AS sfs
     LEFT JOIN (SELECT DISTINCT country_group, country, bob_entity_code FROM dimensions.entity_dimension) AS ed
         ON sfs.country = ed.bob_entity_code
     LEFT JOIN (SELECT DISTINCT hellofresh_week, date_string_backwards FROM dimensions.date_dimension) AS dd
@@ -59,19 +59,21 @@ FROM (
         ON sfs.country = off.business_unit
         AND sfs.fk_subscription = off.subscription_id
         AND dd.hellofresh_week = off.hellofresh_week
-    WHERE sfs.fk_imported_at_date BETWEEN 20250207 AND 20250213       --- Update target date
-        AND sfs.country='DE'                                          --- Update country
-        AND sfs.delivery_wk_4 BETWEEN '2025-03-08' AND '2025-03-14'   --- Update target date
+    WHERE sfs.fk_imported_at_date BETWEEN 20250228 AND 20250306       --- Update target date
+        AND sfs.country='BE'                                          --- Update country
+        AND sfs.delivery_wk_4 BETWEEN '2025-03-28' AND '2025-04-02'   --- Update target date
     GROUP BY 1,2,3,4,5)
 WHERE rank=1
 )
 
-/*
-SELECT DISTINCT delivery_wk_4
+
+/* 
+--To identify the dates (sfs.fk_imported_at_date, sfs.delivery_wk_4) for the above
+SELECT DISTINCT fk_imported_at_date
 FROM scm_forecasting_model.subscription_forecast_snapshots
-WHERE delivery_wk_4 = '2025-03-08'
-  fk_imported_at_date BETWEEN 20240405 AND 20240411
-  AND country='BE'
+WHERE country='BE' AND
+  delivery_wk_4 = '2025-03-31'
+  --fk_imported_at_date BETWEEN 20250228 AND 20250306
 ORDER BY 1
 */
 
@@ -98,13 +100,14 @@ SELECT fk_subscription
              WHEN DATEDIFF(target_date,delivery_wk_4) = -2 THEN 'Cohort D (-2)' --- shifted: delivery date is shifted to 2 days earlier than the public holiday
              WHEN DATEDIFF(target_date,delivery_wk_4) = 2 THEN 'Cohort E (+2)' --- shifted: delivery date is shifted to 2 days later than the public holiday
              WHEN DATEDIFF(target_date,delivery_wk_4) = 3 THEN 'Cohort F (+3)' --- shifted: delivery date is shifted to 3 days later than the public holiday
+             WHEN DATEDIFF(target_date,delivery_wk_4) = -3 THEN 'Cohort G (-3)' --- shifted: delivery date is shifted to 3 days later than the public holiday
          END) AS cohort
 FROM VIEW_2B
-WHERE delivery_wk_4='2025-03-08' -- only focus on PH day for now
+WHERE delivery_wk_4='2025-03-31' -- only focus on PH day for now
 )
 
 
--- Grab the status for these customers from the first date we used (20240426)
+-- Grab the status for these customers from the first date we used
 -- First set up the unique list of customers
 -- Second, cross join for every day of the month
 , VIEW_3A AS (
@@ -113,29 +116,30 @@ WHERE delivery_wk_4='2025-03-08' -- only focus on PH day for now
     FROM VIEW_2C AS A
     CROSS JOIN (
         SELECT fk_imported_at_date
-        FROM scm_forecasting_model.subscription_forecast_snapshots --scm_forecasting_model.delivery_snapshots--
-        WHERE country='DE'
-          AND fk_imported_at_date BETWEEN 20250207 AND 20250312 -- Update the date 
+        FROM scm_forecasting_model.delivery_snapshots
+        WHERE country='BE'
+          AND fk_imported_at_date BETWEEN 20250228 AND 20250531
         GROUP BY 1) AS B
     ORDER BY 1,2
 )
 
 
--- Third, pull info for the week the PH falls on, moving WOW
+-- Third, pull info for the week the PH falls on, moving WOW 
+-- Update the dates with the first date stated in sfs.fk_imported_at_date from the VIEW_3_Subscriptions CTE 
 , VIEW_3B AS (
     SELECT A.*
         , (CASE
-                WHEN DATEDIFF(TO_DATE(CAST(A.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-07') BETWEEN 0 AND 6 THEN status_wk_4
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-07') BETWEEN 7 AND 13 THEN status_wk_3
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-07') BETWEEN 14 AND 20 THEN status_wk_2
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-07') BETWEEN 21 AND 27 THEN status_wk_1
-                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-07') BETWEEN 28 AND 34 THEN status_wk_0
+                WHEN DATEDIFF(TO_DATE(CAST(A.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-28') BETWEEN 0 AND 6 THEN status_wk_4
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-28') BETWEEN 7 AND 13 THEN status_wk_3
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-28') BETWEEN 14 AND 20 THEN status_wk_2
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-28') BETWEEN 21 AND 27 THEN status_wk_1
+                WHEN DATEDIFF(TO_DATE(CAST(B.fk_imported_at_date AS STRING), 'yyyyMMdd'), '2025-02-28') BETWEEN 28 AND 34 THEN status_wk_0
             ELSE 'Other' END) AS status
     FROM VIEW_3A AS A
-    LEFT JOIN scm_forecasting_model.subscription_forecast_snapshots AS B --scm_forecasting_model.delivery_snapshots AS B--
+    LEFT JOIN scm_forecasting_model.delivery_snapshots AS B
     ON A.fk_subscription=B.fk_subscription
     AND A.fk_imported_at_date=B.fk_imported_at_date
-    WHERE B.country='DE'
+    WHERE B.country='BE'
 )
 
 
@@ -157,8 +161,8 @@ SELECT DISTINCT subscription_id
   , create_date
   , ROW_NUMBER() OVER(PARTITION BY subscription_id ORDER BY create_date DESC) AS rank
 FROM public_edw_business_mart_live.order_line_items
-WHERE bob_entity_code='DE'
-  AND hellofresh_delivery_week>='2025-W10' AND hellofresh_delivery_week<='2025-W26'
+WHERE bob_entity_code='BE'
+  AND hellofresh_delivery_week>='2025-W04' AND hellofresh_delivery_week<='2025-W45'
 ORDER BY 1,2,4
 )
 
@@ -184,8 +188,8 @@ LEFT JOIN VIEW_5B AS b
     ON a.fk_subscription = b.subscription_id
 LEFT JOIN public_edw_business_mart_live.order_line_items AS c
     ON a.fk_subscription = c.subscription_id
-WHERE c.bob_entity_code='DE'
-  AND c.hellofresh_delivery_week>='2025-W10' AND c.hellofresh_delivery_week<='2025-W20'
+WHERE c.bob_entity_code='BE'
+  AND c.hellofresh_delivery_week>='2025-W04' AND c.hellofresh_delivery_week<='2025-W23'
   AND c.order_item_type='Mealboxes'
 ORDER BY 1,3,4
 )
@@ -196,10 +200,15 @@ ORDER BY 1,3,4
 SELECT cohort AS Cohort
     , status AS Status
     , COUNT(DISTINCT customer_uuid) AS Total_Customers
-    , COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W11' AND '2025-W15' THEN order_line_items_id END) AS Post_5W_BoxCount
-    , COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W11' AND '2025-W20' THEN order_line_items_id END) AS Post_10W_BoxCount
-    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W11' AND '2025-W15' THEN order_line_items_id END) / COUNT(DISTINCT customer_uuid),2) AS Post_5W_AOR
-    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W11' AND '2025-W20' THEN order_line_items_id END) / COUNT(DISTINCT customer_uuid),2) AS Post_10W_AOR
+    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W04' AND '2025-W13' THEN order_line_items_id END) / COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W04' AND '2025-W13' THEN customer_uuid END),2) AS Pre_10W_AOR
+    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W09' AND '2025-W13' THEN order_line_items_id END) / COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W09' AND '2025-W13' THEN customer_uuid END),2) AS Pre_5W_AOR
+    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W14' AND '2025-W18' THEN order_line_items_id END) / COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W14' AND '2025-W18' THEN customer_uuid END),2) AS Post_5W_AOR
+    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W14' AND '2025-W23' THEN order_line_items_id END) / COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2025-W14' AND '2025-W23' THEN customer_uuid END),2) AS Post_10W_AOR
+    /*
+    , COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2024-W23' AND '2024-W27' THEN order_line_items_id END) AS Post_5W_BoxCount
+    , COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2024-W23' AND '2024-W32' THEN order_line_items_id END) AS Post_10W_BoxCount
+    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2024-W23' AND '2024-W27' THEN order_line_items_id END) / COUNT(DISTINCT customer_uuid),2) AS Post_5W_AOR
+    , ROUND(COUNT(DISTINCT CASE WHEN hellofresh_delivery_week BETWEEN '2024-W23' AND '2024-W32' THEN order_line_items_id END) / COUNT(DISTINCT customer_uuid),2) AS Post_10W_AOR*/
 FROM VIEW_3C AS a
 LEFT JOIN VIEW_6 AS b
     ON a.fk_subscription = b.fk_subscription
